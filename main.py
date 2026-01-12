@@ -53,13 +53,14 @@ def banner():
     info_table = Table.grid(padding=1)
     info_table.add_column(style="bold white")
     info_table.add_column(style="cyan")
-    info_table.add_row("Version", "v19.0.0")
+    info_table.add_row("Version", "v19.0.1")
     info_table.add_row("Author", "Kz.tutorial & XyraOfficial")
     info_table.add_row("Platform", "Termux Optimized")
 
     panel = Panel(
         Align.center(banner_text + "\n" + Text.from_markup("[dim]Advanced Generative AI Agent[/dim]")),
-        subtitle=Align.right("[bold white]Welcome to the Future[/bold white]"),
+        subtitle="[bold white]Welcome to the Future[/bold white]",
+        subtitle_align="right",
         box=box.DOUBLE_EDGE,
         border_style="bright_blue",
         padding=(1, 2)
