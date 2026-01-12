@@ -53,7 +53,7 @@ def banner():
     info_table = Table.grid(padding=1)
     info_table.add_column(style="bold white")
     info_table.add_column(style="cyan")
-    info_table.add_row("Version", "v19.0.3")
+    info_table.add_row("Version", "v19.0.4")
     info_table.add_row("Author", "Kz.tutorial & XyraOfficial")
     info_table.add_row("Platform", "Termux Optimized")
 
@@ -150,19 +150,30 @@ def clean_json(text):
 def query_ai(user_input, tool_output=None):
     headers = {"Authorization": f"Bearer {state['api_key']}", "Content-Type": "application/json"}
     messages = [{"role": "system", "content": get_system_prompt()}]
-    messages.extend(state["history"][-6:])
+    messages.extend(state["history"][-10:]) # Increased history for better context
     
     if tool_output:
         messages.append({"role": "user", "content": f"RESULT:\n{tool_output}\nContinue."})
     else:
         messages.append({"role": "user", "content": user_input})
 
+    payload = {
+        "model": CURRENT_MODEL,
+        "messages": messages,
+        "temperature": 0.5, # Slightly increased for more natural flow
+        "response_format": {"type": "json_object"}
+    }
+
     try:
-        response = requests.post(API_URL, headers=headers, json={"model": CURRENT_MODEL, "messages": messages, "response_format": {"type": "json_object"}}, timeout=30)
-        raw_content = response.json()['choices'][0]['message']['content']
-        return json.loads(clean_json(raw_content))
+        response = requests.post(API_URL, headers=headers, json=payload, timeout=30)
+        data = response.json()
+        if 'choices' in data:
+            raw_content = data['choices'][0]['message']['content']
+            return json.loads(clean_json(raw_content))
+        else:
+            return {"action": "reply", "content": f"API Error: {data.get('error', 'Unknown error')}"}
     except Exception as e:
-        return {"action": "reply", "content": f"AI Error: {e}"}
+        return {"action": "reply", "content": f"AI Connection Error: {e}"}
 
 def handle_response(user_input, response):
     if response.get("action") == "tool":
@@ -174,6 +185,8 @@ def handle_response(user_input, response):
         elif tool == "create_file": output = create_file_animated(response.get("filename"), response.get("content"))
         elif tool == "google_search": output = google_search_tool(args)
         elif tool == "get_time_info": output = get_realtime_info()
+        
+        state["history"].append({"role": "assistant", "content": json.dumps(response)})
         
         with console.status("[bold green]Finalizing...", spinner="point"):
             final = query_ai(user_input, tool_output=output)
@@ -189,7 +202,10 @@ def handle_response(user_input, response):
 
 def main():
     if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, 'r') as f: state["api_key"] = json.load(f).get("api_key", "")
+        try:
+            with open(CONFIG_FILE, 'r') as f: 
+                state["api_key"] = json.load(f).get("api_key", "")
+        except: pass
     
     console.clear()
     if not state["api_key"]:
@@ -210,6 +226,8 @@ def main():
                     continue
                 break
             
+            if not user_input.strip(): continue
+            
             state["history"].append({"role": "user", "content": user_input})
             
             with console.status("[bold blue]Processing...", spinner="bouncingBar"):
@@ -221,7 +239,7 @@ def main():
             console.print("\n[bold red]Interrupted by user. Exiting...[/bold red]")
             break
         except Exception as e:
-            console.print(f"[bold red]An unexpected error occurred: {e}[/bold red]")
+            console.print(f"[bold red]System Error: {e}[/bold red]")
 
 if __name__ == "__main__":
     main()
