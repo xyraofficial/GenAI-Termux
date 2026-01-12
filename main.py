@@ -53,7 +53,7 @@ def banner():
     info_table = Table.grid(padding=1)
     info_table.add_column(style="bold white")
     info_table.add_column(style="cyan")
-    info_table.add_row("Version", "v19.0.2")
+    info_table.add_row("Version", "v19.0.3")
     info_table.add_row("Author", "Kz.tutorial & XyraOfficial")
     info_table.add_row("Platform", "Termux Optimized")
 
@@ -137,10 +137,14 @@ Actions: tool (run_terminal, create_file, google_search, get_time_info), reply (
 
 def clean_json(text):
     text = text.strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```json\s*", "", text)
-        text = re.sub(r"^```\s*", "", text)
-        text = re.sub(r"\s*```$", "", text)
+    # Handle possible markdown blocks
+    text = re.sub(r"^```json\s*", "", text, flags=re.MULTILINE)
+    text = re.sub(r"^```\s*", "", text, flags=re.MULTILINE)
+    text = re.sub(r"\s*```$", "", text, flags=re.MULTILINE)
+    # Handle possible extra text before/after JSON
+    match = re.search(r'\{.*\}', text, re.DOTALL)
+    if match:
+        return match.group(0)
     return text
 
 def query_ai(user_input, tool_output=None):
@@ -159,6 +163,29 @@ def query_ai(user_input, tool_output=None):
         return json.loads(clean_json(raw_content))
     except Exception as e:
         return {"action": "reply", "content": f"AI Error: {e}"}
+
+def handle_response(user_input, response):
+    if response.get("action") == "tool":
+        tool = response.get("tool_name")
+        args = response.get("args", "")
+        
+        output = ""
+        if tool == "run_terminal": output = run_terminal_live(args)
+        elif tool == "create_file": output = create_file_animated(response.get("filename"), response.get("content"))
+        elif tool == "google_search": output = google_search_tool(args)
+        elif tool == "get_time_info": output = get_realtime_info()
+        
+        with console.status("[bold green]Finalizing...", spinner="point"):
+            final = query_ai(user_input, tool_output=output)
+        
+        if "content" in final and final["content"]:
+            console.print(Panel(Markdown(final["content"]), title="[bold cyan]NEXUS RESPONSE[/bold cyan]", border_style="bright_blue", padding=(1, 2)))
+        state["history"].append({"role": "assistant", "content": json.dumps(final)})
+    else:
+        content = response.get("content", "")
+        if content:
+            console.print(Panel(Markdown(content), title="[bold cyan]NEXUS RESPONSE[/bold cyan]", border_style="bright_blue", padding=(1, 2)))
+        state["history"].append({"role": "assistant", "content": json.dumps(response)})
 
 def main():
     if os.path.exists(CONFIG_FILE):
@@ -188,31 +215,13 @@ def main():
             with console.status("[bold blue]Processing...", spinner="bouncingBar"):
                 response = query_ai(user_input)
             
-            if response.get("action") == "tool":
-                tool = response.get("tool_name")
-                args = response.get("args", "")
-                
-                output = ""
-                if tool == "run_terminal": output = run_terminal_live(args)
-                elif tool == "create_file": output = create_file_animated(response.get("filename"), response.get("content"))
-                elif tool == "google_search": output = google_search_tool(args)
-                elif tool == "get_time_info": output = get_realtime_info()
-                
-                with console.status("[bold green]Finalizing...", spinner="point"):
-                    final = query_ai(user_input, tool_output=output)
-                
-                if "content" in final and final["content"]:
-                    console.print(Panel(Markdown(final["content"]), title="[bold cyan]NEXUS RESPONSE[/bold cyan]", border_style="bright_blue", padding=(1, 2)))
-                state["history"].append({"role": "assistant", "content": json.dumps(final)})
-            else:
-                content = response.get("content", "")
-                if content:
-                    console.print(Panel(Markdown(content), title="[bold cyan]NEXUS RESPONSE[/bold cyan]", border_style="bright_blue", padding=(1, 2)))
-                state["history"].append({"role": "assistant", "content": json.dumps(response)})
+            handle_response(user_input, response)
 
         except KeyboardInterrupt:
             console.print("\n[bold red]Interrupted by user. Exiting...[/bold red]")
             break
+        except Exception as e:
+            console.print(f"[bold red]An unexpected error occurred: {e}[/bold red]")
 
 if __name__ == "__main__":
     main()
