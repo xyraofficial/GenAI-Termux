@@ -58,16 +58,16 @@ def google_search_tool(query):
     """Mencari di Google menggunakan library googlesearch-python"""
     console.print(Rule(style="dim blue"))
     console.print(f"[bold blue]🌍 GOOGLING:[/bold blue] [dim]{query}[/dim]")
-    
+
     try:
         results = []
         # Mengambil 3 hasil teratas, advanced=True untuk dapat judul & deskripsi
         for res in gsearch(query, num_results=3, advanced=True):
             results.append(f"TITLE: {res.title}\nDESC: {res.description}\nLINK: {res.url}")
-            
+
         if not results:
             return "Google Search selesai, tapi tidak ada hasil yang relevan."
-            
+
         return "HASIL PENCARIAN GOOGLE TERBARU:\n\n" + "\n\n".join(results)
 
     except Exception as e:
@@ -131,89 +131,41 @@ def create_file_animated(filename, content):
 # --- ENGINE: TERMINAL ---
 
 def run_terminal_live(command):
-    # Cek apakah command mencoba menjalankan script (python, node, bash, dll)
-    script_executors = ["python", "python3", "node", "bash", "sh", "zsh", "php", "perl", "ruby"]
-    is_script = any(command.startswith(executor + " ") for executor in script_executors) or command.endswith(".sh") or command.endswith(".py") or command.endswith(".js")
-
-    if is_script:
-        msg = f"\n[bold red]⚠ KEBIJAKAN KEAMANAN:[/bold red]\n"
-        msg += f"Saya tidak diizinkan untuk menjalankan script secara otomatis.\n\n"
-        msg += f"[bold yellow]Cara menjalankan manual:[/bold yellow]\n"
-        msg += f"1. Buka session baru di Termux (Swipe kiri > New Session).\n"
-        msg += f"2. Ketik perintah berikut:\n"
-        msg += f"   [bold cyan]{command}[/bold cyan]\n"
-        return f"###MANUAL_RUN_REQUIRED###\n{msg}"
-
     if command.startswith("source") or command.startswith("cd ") or command.startswith(". "):
-        return f"[SYSTEM]: Perintah '{command}' harus dijalankan manual di terminal."
+        return f"[SYSTEM]: Use manual copy for '{command}'."
 
     is_interactive, fname, trigger = scan_for_interactivity(command)
     if is_interactive:
-        return f"###INTERACTIVE_STOP### File '{fname}' terdeteksi memiliki input ('{trigger}'). Silakan jalankan secara manual di session baru."
+        return f"###INTERACTIVE_STOP### File '{fname}' contains input code ('{trigger}'). Ask user to run manually."
 
     console.print(Rule(style="dim cyan"))
     console.print(f"[bold yellow]⚡ EXEC:[/bold yellow] [on black] {command} [/on black]")
-    
-    # Hanya izinkan perintah dasar yang benar-benar aman
-    safe_cmds = ["ls", "echo", "whoami", "pwd", "date", "neofetch", "clear", "cat", "grep", "git", "python", "node", "rm", "mkdir", "touch", "pkg", "apt", "unzip", "zip", "tar"]
-    
-    # Otomatis tambahkan -y jika ini adalah perintah instalasi
-    if ("pkg install" in command or "apt install" in command) and "-y" not in command:
-        command += " -y"
-        
-    # Logika Konfirmasi: 
-    # 1. Selalu izinkan perintah 'aman' (termasuk unzip -v, ls, dll)
-    # 2. Selalu izinkan perintah instalasi (karena user sudah minta install)
-    # 3. Minta konfirmasi hanya untuk perintah berbahaya (rm, git push, dsb)
-    
-    cmd_base = command.split()[0] if command.strip() else ""
-    dangerous_cmds = ["rm", "mv", "cp", "git", "chmod", "chown"]
-    is_dangerous = cmd_base in dangerous_cmds
-    is_safe = cmd_base in safe_cmds or "install" in command
-    
-    if is_dangerous and not is_safe:
-        if not Confirm.ask(f"[bold red]Perintah '{cmd_base}' berisiko. Lanjutkan?[/bold red]"):
+
+    safe_cmds = ["ls", "echo", "whoami", "pwd", "date", "neofetch", "clear", "cat", "grep", "git", "python", "node", "rm", "mkdir", "touch", "pkg", "apt"]
+    is_safe = any(command.startswith(cmd) for cmd in safe_cmds)
+
+    if not is_safe:
+        if not Confirm.ask(f"[bold red]Allow execution?[/bold red]"):
             return "User denied permission."
 
-    # Gunakan progress bar untuk instalasi agar konsol tetap bersih
-    is_installation = "pkg install" in command or "apt install" in command
-    
     full_output = []
     current_loc = os.getcwd().replace("/data/data/com.termux/files/home", "~")
-    
+
     try:
         executable = "/data/data/com.termux/files/usr/bin/bash"
         if not os.path.exists(executable): executable = None 
 
         process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1, executable=executable)
 
-        if is_installation:
-            with Progress(
-                SpinnerColumn(style="bold yellow"),
-                TextColumn("[bold cyan]Installing..."),
-                BarColumn(bar_width=30, style="dim white", complete_style="green"),
-                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-                console=console
-            ) as progress:
-                task = progress.add_task("Working", total=100)
-                while True:
-                    line = process.stdout.readline()
-                    if not line and process.poll() is not None: break
-                    if line:
-                        full_output.append(line.strip())
-                        # Simulasi progress bar berdasarkan baris output (pendekatan sederhana)
-                        progress.update(task, advance=0.5 if progress.tasks[0].percentage < 95 else 0)
-                progress.update(task, completed=100)
-        else:
-            with Live(refresh_per_second=12, auto_refresh=True) as live:
-                while True:
-                    line = process.stdout.readline()
-                    if not line and process.poll() is not None: break
-                    if line:
-                        full_output.append(line.strip())
-                        log_text = "\n".join(full_output[-20:])
-                        panel = Panel(Text(log_text, style="green"), title=f"[bold white]CONSOLE[/bold white] [dim]({current_loc})[/dim]", subtitle="[blink yellow]RUNNING[/blink yellow]", border_style="green", box=box.ROUNDED)
-                        live.update(panel)
+        with Live(refresh_per_second=12, auto_refresh=True) as live:
+            while True:
+                line = process.stdout.readline()
+                if not line and process.poll() is not None: break
+                if line:
+                    full_output.append(line.strip())
+                    log_text = "\n".join(full_output[-20:])
+                    panel = Panel(Text(log_text, style="green"), title=f"[bold white]CONSOLE[/bold white] [dim]({current_loc})[/dim]", subtitle="[blink yellow]RUNNING[/blink yellow]", border_style="green", box=box.ROUNDED)
+                    live.update(panel)
 
         stderr = process.stderr.read()
         if stderr: full_output.append(f"STDERR: {stderr}")
@@ -241,14 +193,18 @@ def get_system_prompt():
     return """
 You are NEXUS V19, created by **Kz.tutorial & XyraOfficial**.
 
-RULES:
-1. **Analisis Output**: Jika user minta "cek" sesuatu (misal: cek unzip), ambil bagian paling penting saja dari output tool (misal: versi atau status instalasi). Berikan jawaban SINGKAT dan PADAT.
-2. **Tanpa Duplikasi**: JANGAN memberikan bagian "RUN MANUALLY" jika perintah sudah berhasil dijalankan oleh tool. Hanya berikan panduan manual jika eksekusi tool GAGAL atau dilarang (untuk script).
-3. **Smart UX**: Jangan tanya Y/N kecuali untuk perintah yang benar-benar berbahaya seperti menghapus file (rm). Untuk instalasi atau pengecekan, langsung jalankan.
-4. **Script Policy**: Tetap dilarang menjalankan file script (.py, .sh) secara otomatis. Berikan panduan manual hanya dalam kasus ini.
+TOOLS & RULES:
+1. **Time/Date**: If user asks "Jam berapa?", "Hari apa?", "Tanggal berapa?", USE `get_time_info`. Do NOT use Google for this.
+2. **Internet Search**: If user asks about news, facts, prices (Bitcoin/Stocks), or definitions, USE `Google Search`.
+3. **Identity**: If asked "Who created you?", answer "Kz.tutorial & XyraOfficial".
+4. **Interactive Files**: If result is "###INTERACTIVE_STOP###", refuse to run.
+5. **Directory**: Use `ask_choice` for ls/home checks.
 
 RESPONSE FORMAT (JSON ONLY):
-{ "action": "reply", "content": "Jawaban singkat & pintar Anda.", "copy_text": "" }
+Type 1: { "action": "tool", "tool_name": "run_terminal", "args": "ls -la" }
+Type 2 (Search): { "action": "tool", "tool_name": "google_search", "args": "harga emas hari ini" }
+Type 3 (Time): { "action": "tool", "tool_name": "get_time_info", "args": "" }
+Type 4 (Reply): { "action": "reply", "content": "Text.", "copy_text": "" } 
 """
 
 def load_config():
@@ -284,7 +240,7 @@ def query_ai(user_input, tool_output=None):
     headers = {"Authorization": f"Bearer {state['api_key']}", "Content-Type": "application/json"}
     messages = [{"role": "system", "content": get_system_prompt()}]
     messages.extend(state["history"][-8:])
-    
+
     if tool_output:
         messages.append({"role": "user", "content": f"Tool Output:\n{tool_output}\n\nProceed."})
     else:
@@ -304,30 +260,30 @@ def query_ai(user_input, tool_output=None):
 def main():
     load_config()
     setup()
-    
+
     grid = Table.grid(expand=True)
     grid.add_column(justify="left"); grid.add_column(justify="right")
     grid.add_row("[bold cyan]NEXUS AGENT v19[/bold cyan]", "[dim]Google Edition[/dim]")
     console.print(Panel(grid, style="cyan", box=box.ROUNDED))
-    
+
     while True:
         console.print()
         console.print(f"[bold cyan]USER ❯[/bold cyan]", end=" ")
         user_input = input()
-        
+
         if user_input.lower() in ["exit", "quit"]: break
         if not user_input.strip(): continue
-        
+
         state["history"].append({"role": "user", "content": user_input})
 
         with console.status("[bold yellow]Thinking...[/bold yellow]", spinner="aesthetic"):
             response = query_ai(user_input)
-        
+
         # HANDLE TOOLS
         if response.get("action") == "tool":
             tool = response.get("tool_name")
             output = ""
-            
+
             if tool == "run_terminal": output = run_terminal_live(response.get("args"))
             elif tool == "create_file": output = create_file_animated(response.get("filename"), response.get("content"))
             elif tool == "ask_choice": output = ask_choice(response.get("question"), response.get("choices"))
@@ -335,22 +291,22 @@ def main():
             elif tool == "get_time_info": output = get_realtime_info() # NEW TOOL
 
             state["history"].append({"role": "assistant", "content": json.dumps(response)})
-            
+
             with console.status("[bold green]Processing...[/bold green]", spinner="dots"):
                 final = query_ai(user_input, tool_output=output)
-            
+
             # NESTED TOOL
             if final.get("action") == "tool":
                 tool_2 = final.get("tool_name")
                 if tool_2 == "run_terminal": output_2 = run_terminal_live(final.get("args"))
                 elif tool_2 == "create_file": create_file_animated(final.get("filename"), final.get("content"))
                 state["history"].append({"role": "assistant", "content": json.dumps(final)})
-            
+
             elif "content" in final:
                 console.print(Panel(Markdown(final["content"]), title="NEXUS", border_style="cyan"))
                 if "copy_text" in final: print_manual_copy(final["copy_text"])
                 state["history"].append({"role": "assistant", "content": json.dumps(final)})
-            
+
         else:
             if "content" in response:
                 console.print(Panel(Markdown(response["content"]), title="NEXUS", border_style="cyan"))
