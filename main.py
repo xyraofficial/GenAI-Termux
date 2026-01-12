@@ -156,12 +156,20 @@ def run_terminal_live(command):
     
     # Hanya izinkan perintah dasar yang benar-benar aman
     safe_cmds = ["ls", "echo", "whoami", "pwd", "date", "neofetch", "clear", "cat", "grep", "git", "python", "node", "rm", "mkdir", "touch", "pkg", "apt"]
+    
+    # Otomatis tambahkan -y jika ini adalah perintah instalasi (pkg install atau apt install)
+    if ("pkg install" in command or "apt install" in command) and "-y" not in command:
+        command += " -y"
+        
     is_safe = any(command.startswith(cmd) for cmd in safe_cmds)
     
     if not is_safe:
         if not Confirm.ask(f"[bold red]Allow execution?[/bold red]"):
             return "User denied permission."
 
+    # Gunakan progress bar untuk instalasi agar konsol tetap bersih
+    is_installation = "pkg install" in command or "apt install" in command
+    
     full_output = []
     current_loc = os.getcwd().replace("/data/data/com.termux/files/home", "~")
     
@@ -171,15 +179,33 @@ def run_terminal_live(command):
 
         process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1, executable=executable)
 
-        with Live(refresh_per_second=12, auto_refresh=True) as live:
-            while True:
-                line = process.stdout.readline()
-                if not line and process.poll() is not None: break
-                if line:
-                    full_output.append(line.strip())
-                    log_text = "\n".join(full_output[-20:])
-                    panel = Panel(Text(log_text, style="green"), title=f"[bold white]CONSOLE[/bold white] [dim]({current_loc})[/dim]", subtitle="[blink yellow]RUNNING[/blink yellow]", border_style="green", box=box.ROUNDED)
-                    live.update(panel)
+        if is_installation:
+            with Progress(
+                SpinnerColumn(style="bold yellow"),
+                TextColumn("[bold cyan]Installing..."),
+                BarColumn(bar_width=30, style="dim white", complete_style="green"),
+                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                console=console
+            ) as progress:
+                task = progress.add_task("Working", total=100)
+                while True:
+                    line = process.stdout.readline()
+                    if not line and process.poll() is not None: break
+                    if line:
+                        full_output.append(line.strip())
+                        # Simulasi progress bar berdasarkan baris output (pendekatan sederhana)
+                        progress.update(task, advance=0.5 if progress.tasks[0].percentage < 95 else 0)
+                progress.update(task, completed=100)
+        else:
+            with Live(refresh_per_second=12, auto_refresh=True) as live:
+                while True:
+                    line = process.stdout.readline()
+                    if not line and process.poll() is not None: break
+                    if line:
+                        full_output.append(line.strip())
+                        log_text = "\n".join(full_output[-20:])
+                        panel = Panel(Text(log_text, style="green"), title=f"[bold white]CONSOLE[/bold white] [dim]({current_loc})[/dim]", subtitle="[blink yellow]RUNNING[/blink yellow]", border_style="green", box=box.ROUNDED)
+                        live.update(panel)
 
         stderr = process.stderr.read()
         if stderr: full_output.append(f"STDERR: {stderr}")
