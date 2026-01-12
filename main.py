@@ -155,16 +155,24 @@ def run_terminal_live(command):
     console.print(f"[bold yellow]⚡ EXEC:[/bold yellow] [on black] {command} [/on black]")
     
     # Hanya izinkan perintah dasar yang benar-benar aman
-    safe_cmds = ["ls", "echo", "whoami", "pwd", "date", "neofetch", "clear", "cat", "grep", "git", "python", "node", "rm", "mkdir", "touch", "pkg", "apt"]
+    safe_cmds = ["ls", "echo", "whoami", "pwd", "date", "neofetch", "clear", "cat", "grep", "git", "python", "node", "rm", "mkdir", "touch", "pkg", "apt", "unzip", "zip", "tar"]
     
-    # Otomatis tambahkan -y jika ini adalah perintah instalasi (pkg install atau apt install)
+    # Otomatis tambahkan -y jika ini adalah perintah instalasi
     if ("pkg install" in command or "apt install" in command) and "-y" not in command:
         command += " -y"
         
-    is_safe = any(command.startswith(cmd) for cmd in safe_cmds)
+    # Logika Konfirmasi: 
+    # 1. Selalu izinkan perintah 'aman' (termasuk unzip -v, ls, dll)
+    # 2. Selalu izinkan perintah instalasi (karena user sudah minta install)
+    # 3. Minta konfirmasi hanya untuk perintah berbahaya (rm, git push, dsb)
     
-    if not is_safe:
-        if not Confirm.ask(f"[bold red]Allow execution?[/bold red]"):
+    cmd_base = command.split()[0] if command.strip() else ""
+    dangerous_cmds = ["rm", "mv", "cp", "git", "chmod", "chown"]
+    is_dangerous = cmd_base in dangerous_cmds
+    is_safe = cmd_base in safe_cmds or "install" in command
+    
+    if is_dangerous and not is_safe:
+        if not Confirm.ask(f"[bold red]Perintah '{cmd_base}' berisiko. Lanjutkan?[/bold red]"):
             return "User denied permission."
 
     # Gunakan progress bar untuk instalasi agar konsol tetap bersih
@@ -233,18 +241,14 @@ def get_system_prompt():
     return """
 You are NEXUS V19, created by **Kz.tutorial & XyraOfficial**.
 
-TOOLS & RULES:
-1. **Time/Date**: Jika user tanya waktu, gunakan `get_time_info`.
-2. **Internet Search**: Jika user tanya berita atau fakta, gunakan `google_search`.
-3. **Identity**: Jawaban pencipta: "Kz.tutorial & XyraOfficial".
-4. **Security**: Anda DILARANG menjalankan script (Python, Bash, JS, dll) secara langsung. 
-   Jika Anda perlu menjalankan perintah yang diblokir oleh tool `run_terminal`, jelaskan kepada user bahwa mereka harus menjalankannya secara MANUAL di session Termux baru. Berikan perintahnya dengan jelas di bagian `copy_text`.
-5. **Format Response**: Harus JSON sesuai schema.
+RULES:
+1. **Analisis Output**: Jika user minta "cek" sesuatu (misal: cek unzip), ambil bagian paling penting saja dari output tool (misal: versi atau status instalasi). Berikan jawaban SINGKAT dan PADAT.
+2. **Tanpa Duplikasi**: JANGAN memberikan bagian "RUN MANUALLY" jika perintah sudah berhasil dijalankan oleh tool. Hanya berikan panduan manual jika eksekusi tool GAGAL atau dilarang (untuk script).
+3. **Smart UX**: Jangan tanya Y/N kecuali untuk perintah yang benar-benar berbahaya seperti menghapus file (rm). Untuk instalasi atau pengecekan, langsung jalankan.
+4. **Script Policy**: Tetap dilarang menjalankan file script (.py, .sh) secara otomatis. Berikan panduan manual hanya dalam kasus ini.
 
 RESPONSE FORMAT (JSON ONLY):
-{ "action": "reply", "content": "Penjelasan Anda di sini.", "copy_text": "Perintah untuk dijalankan manual jika ada" }
-Atau untuk tool:
-{ "action": "tool", "tool_name": "...", "args": "..." }
+{ "action": "reply", "content": "Jawaban singkat & pintar Anda.", "copy_text": "" }
 """
 
 def load_config():
