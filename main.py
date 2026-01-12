@@ -53,7 +53,7 @@ def banner():
     info_table = Table.grid(padding=1)
     info_table.add_column(style="bold white")
     info_table.add_column(style="cyan")
-    info_table.add_row("Version", "v19.0.1")
+    info_table.add_row("Version", "v19.0.2")
     info_table.add_row("Author", "Kz.tutorial & XyraOfficial")
     info_table.add_row("Platform", "Termux Optimized")
 
@@ -135,6 +135,14 @@ def get_system_prompt():
     return """You are NEXUS V19 by Kz.tutorial & XyraOfficial. Always reply in JSON format.
 Actions: tool (run_terminal, create_file, google_search, get_time_info), reply (content, copy_text)."""
 
+def clean_json(text):
+    text = text.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```json\s*", "", text)
+        text = re.sub(r"^```\s*", "", text)
+        text = re.sub(r"\s*```$", "", text)
+    return text
+
 def query_ai(user_input, tool_output=None):
     headers = {"Authorization": f"Bearer {state['api_key']}", "Content-Type": "application/json"}
     messages = [{"role": "system", "content": get_system_prompt()}]
@@ -147,7 +155,8 @@ def query_ai(user_input, tool_output=None):
 
     try:
         response = requests.post(API_URL, headers=headers, json={"model": CURRENT_MODEL, "messages": messages, "response_format": {"type": "json_object"}}, timeout=30)
-        return json.loads(response.json()['choices'][0]['message']['content'])
+        raw_content = response.json()['choices'][0]['message']['content']
+        return json.loads(clean_json(raw_content))
     except Exception as e:
         return {"action": "reply", "content": f"AI Error: {e}"}
 
@@ -192,11 +201,13 @@ def main():
                 with console.status("[bold green]Finalizing...", spinner="point"):
                     final = query_ai(user_input, tool_output=output)
                 
-                if "content" in final:
+                if "content" in final and final["content"]:
                     console.print(Panel(Markdown(final["content"]), title="[bold cyan]NEXUS RESPONSE[/bold cyan]", border_style="bright_blue", padding=(1, 2)))
                 state["history"].append({"role": "assistant", "content": json.dumps(final)})
             else:
-                console.print(Panel(Markdown(response.get("content", "")), title="[bold cyan]NEXUS RESPONSE[/bold cyan]", border_style="bright_blue", padding=(1, 2)))
+                content = response.get("content", "")
+                if content:
+                    console.print(Panel(Markdown(content), title="[bold cyan]NEXUS RESPONSE[/bold cyan]", border_style="bright_blue", padding=(1, 2)))
                 state["history"].append({"role": "assistant", "content": json.dumps(response)})
 
         except KeyboardInterrupt:
