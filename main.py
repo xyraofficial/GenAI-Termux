@@ -155,11 +155,38 @@ def run_terminal_live(command):
     console.print(f"[bold yellow]⚡ EXEC:[/bold yellow] [on black] {command} [/on black]")
     
     # Hanya izinkan perintah dasar yang benar-benar aman
-    safe_cmds = ["ls", "echo", "whoami", "pwd", "date", "neofetch", "clear", "grep", "cat", "mkdir", "touch", "pkg list-installed"]
-    is_safe = any(command.split()[0] == cmd for cmd in safe_cmds if command.strip())
+    safe_cmds = ["ls", "echo", "whoami", "pwd", "date", "neofetch", "clear", "cat", "grep", "git", "python", "node", "rm", "mkdir", "touch", "pkg", "apt"]
+    is_safe = any(command.startswith(cmd) for cmd in safe_cmds)
     
     if not is_safe:
-        return f"###UNSAFE_COMMAND### Perintah '{command}' dianggap tidak aman untuk dijalankan otomatis. Silakan jalankan secara manual."
+        if not Confirm.ask(f"[bold red]Allow execution?[/bold red]"):
+            return "User denied permission."
+
+    full_output = []
+    current_loc = os.getcwd().replace("/data/data/com.termux/files/home", "~")
+    
+    try:
+        executable = "/data/data/com.termux/files/usr/bin/bash"
+        if not os.path.exists(executable): executable = None 
+
+        process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1, executable=executable)
+
+        with Live(refresh_per_second=12, auto_refresh=True) as live:
+            while True:
+                line = process.stdout.readline()
+                if not line and process.poll() is not None: break
+                if line:
+                    full_output.append(line.strip())
+                    log_text = "\n".join(full_output[-20:])
+                    panel = Panel(Text(log_text, style="green"), title=f"[bold white]CONSOLE[/bold white] [dim]({current_loc})[/dim]", subtitle="[blink yellow]RUNNING[/blink yellow]", border_style="green", box=box.ROUNDED)
+                    live.update(panel)
+
+        stderr = process.stderr.read()
+        if stderr: full_output.append(f"STDERR: {stderr}")
+        return "\n".join(full_output) if full_output else "[Success]"
+
+    except Exception as e:
+        return f"Error: {str(e)}"
 
 # --- ENGINE: CHOICE ---
 def ask_choice(question, choices):
